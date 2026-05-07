@@ -4,7 +4,7 @@ Konuşma bağlamına ve duygu durumuna göre bağlamsal yanıt önerileri üreti
 Şablon tabanlı — tamamen ücretsiz, API gereksiz.
 """
 
-from typing import Optional
+from typing import Optional, List
 
 
 # ============================================================
@@ -187,7 +187,7 @@ def generate_suggestions(
     language: str = "tr",
     emotion: str = "neutral",
     politeness_level: int = 50,
-    conversation_history: Optional[list] = None,
+    conversation_history: Optional[List] = None,
 ) -> dict:
     """
     Bağlamsal yanıt önerileri üretir.
