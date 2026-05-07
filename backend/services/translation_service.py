@@ -20,8 +20,32 @@ SUPPORTED_LANGUAGES = {
     "ar": "العربية",
     "zh": "中文",
     "ru": "Русский",
-    "it": "Italiano",
     "pt": "Português",
+}
+
+# MyMemory API için çeviri öncesi slang normalizasyonu
+# MyMemory crowd-sourced olduğu için bazı kısa kelimelere yanlış/garip cevaplar verebiliyor.
+SLANG_NORMALIZATION = {
+    "tr": {
+        "naber": "ne haber",
+        "napiyorsun": "ne yapıyorsun",
+        "napıyorsun": "ne yapıyorsun",
+        "nasılsın": "nasılsın",
+        "nbr": "ne haber",
+        "slm": "selam",
+        "mrb": "merhaba",
+        "eyvallah": "teşekkür ederim",
+        "eyv": "teşekkür ederim",
+    },
+    "en": {
+        "wanna": "want to",
+        "gonna": "going to",
+        "gotta": "have to",
+        "lemme": "let me",
+        "gimme": "give me",
+        "brb": "be right back",
+        "idk": "i don't know",
+    }
 }
 
 MYMEMORY_API_URL = "https://api.mymemory.translated.net/get"
@@ -48,8 +72,21 @@ async def translate_text(
     if not text or not text.strip():
         return {"translated_text": "", "match_quality": 0}
 
+    # Çeviri öncesi normalizasyon
+    normalized_text = text.strip()
+    if source_lang in SLANG_NORMALIZATION:
+        normalized_lower = normalized_text.lower()
+        if normalized_lower in SLANG_NORMALIZATION[source_lang]:
+            normalized_text = SLANG_NORMALIZATION[source_lang][normalized_lower]
+        else:
+            # Sadece tam eşleşme değil, metin içindeki kelimeleri de normalize edebiliriz, 
+            # ama tam eşleşme en güvenlisi.
+            import re
+            for slang, formal in SLANG_NORMALIZATION[source_lang].items():
+                normalized_text = re.sub(r'\b' + re.escape(slang) + r'\b', formal, normalized_text, flags=re.IGNORECASE)
+
     params = {
-        "q": text,
+        "q": normalized_text,
         "langpair": f"{source_lang}|{target_lang}",
     }
 

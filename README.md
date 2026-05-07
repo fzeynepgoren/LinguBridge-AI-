@@ -1,22 +1,22 @@
-# 🌉 LinguBridge AI
+# LinguBridge AI
 
 **Duygu ve Kültür Odaklı Akıllı İletişim Asistanı**
 
 HCI (İnsan-Bilgisayar Etkileşimi) dersi projesi. Geleneksel çeviri araçlarını HCI prensipleriyle birleştiren akıllı bir iletişim köprüsü.
 
-## ✨ Özellikler
+## Özellikler
 
 | Modül | Açıklama | Teknoloji |
 |-------|----------|-----------|
-| 🎤 Speech-to-Text | Sesli giriş → metin | Web Speech API |
-| 🧠 Duygu Analizi | Pitch, tempo, enerji → duygu | Web Audio API + Kural Tabanlı |
-| 🌍 Çeviri | 12 dil arası çeviri | MyMemory API (ücretsiz) |
-| 🎚️ Nezaket Slider | Samimi ↔ Resmi ton dönüşümü | Kural Tabanlı Motor |
-| 💡 Yanıt Önerileri | Bağlamsal akıllı öneriler | Şablon Tabanlı |
-| 🎨 Adaptif UI | Duyguya göre tema değişimi | CSS Dinamik Değişkenler |
-| 🔊 TTS | Çeviriyi sesli okuma | Web Speech Synthesis |
+| Speech-to-Text | Sesli giriş → metin | Web Speech API |
+| Duygu Analizi | Pitch, tempo, enerji → duygu | Web Audio API + Kural Tabanlı |
+| Çeviri | 12 dil arası çeviri | MyMemory API (ücretsiz) |
+| Nezaket Slider | Samimi ↔ Resmi ton dönüşümü | Kural Tabanlı Motor |
+| Yanıt Önerileri | Bağlamsal akıllı öneriler | Şablon Tabanlı |
+| Adaptif UI | Duyguya göre tema değişimi | CSS Dinamik Değişkenler |
+| TTS | Çeviriyi sesli okuma | Web Speech Synthesis |
 
-## 🚀 Kurulum & Çalıştırma
+## Kurulum & Çalıştırma
 
 ### Gereksinimler
 - **Node.js** 18+
@@ -40,7 +40,7 @@ npm run dev
 
 Tarayıcıda **http://localhost:5173** adresini açın.
 
-## 🏗️ Proje Yapısı
+## Proje Yapısı
 
 ```
 LinguBridge-AI/
@@ -58,11 +58,11 @@ LinguBridge-AI/
 │       └── utils/              # Pitch, duygu, API
 ```
 
-## 💰 Maliyet
+## Maliyet
 
 **$0** — Tüm servisler tamamen ücretsizdir.
 
-## 📚 Akademik Alanlar
+## Akademik Alanlar
 
 - Human-Computer Interaction (HCI)
 - Natural Language Processing (NLP)

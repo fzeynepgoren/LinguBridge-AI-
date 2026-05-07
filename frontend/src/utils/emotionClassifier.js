@@ -73,7 +73,7 @@ export function classifyEmotion(pitch, tempo, energy) {
   // Pitch, tempo ve enerjiyi normalize et (0-1 arası)
   const normalizedPitch = Math.min(Math.max((pitch - 80) / (300 - 80), 0), 1);
   const normalizedTempo = Math.min(Math.max(tempo / 8, 0), 1);
-  const normalizedEnergy = Math.min(Math.max(energy / 0.3, 0), 1);
+  const normalizedEnergy = Math.min(Math.max(energy / 0.1, 0), 1);
 
   // Her duygu için skor hesapla
   const scores = {
@@ -152,11 +152,16 @@ function calculateEmotionScore(pitch, tempo, energy, targets) {
   // Gaussian benzeri skor (sigma = 0.3)
   const sigma = 0.3;
   const pitchScore = Math.exp(-(pitchDist * pitchDist) / (2 * sigma * sigma));
-  const tempoScore = Math.exp(-(tempoDist * tempoDist) / (2 * sigma * sigma));
   const energyScore = Math.exp(-(energyDist * energyDist) / (2 * sigma * sigma));
 
   // Ağırlıklı ortalama (pitch en önemli)
-  return pitchScore * 0.4 + tempoScore * 0.3 + energyScore * 0.3;
+  // Eğer tempo geçerli tespit edilemediyse (0 ise), değerlendirmeye katma
+  if (tempo > 0) {
+    const tempoScore = Math.exp(-(tempoDist * tempoDist) / (2 * sigma * sigma));
+    return pitchScore * 0.5 + tempoScore * 0.2 + energyScore * 0.3;
+  }
+  
+  return pitchScore * 0.6 + energyScore * 0.4;
 }
 
 /**

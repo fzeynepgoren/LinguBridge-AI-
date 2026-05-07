@@ -126,7 +126,7 @@ export default function App() {
       try {
         const sugResult = await getSuggestions(
           sourceText,
-          targetLang,
+          sourceLang,
           currentEmotion,
           politenessLevel,
           conversationHistory.map((h) => h.source)

@@ -132,6 +132,11 @@ EN_INFORMAL_TO_FORMAL = {
     "btw": "additionally",
     "asap": "at your earliest convenience",
     "fyi": "for your information",
+    "what's up": "how are you",
+    "how's it going": "how are you doing",
+    "what're you up to": "what are you doing",
+    "i dunno": "i do not know",
+    "whatever": "it does not matter",
 }
 
 EN_FORMAL_TO_INFORMAL = {v.lower(): k for k, v in EN_INFORMAL_TO_FORMAL.items() if v}
