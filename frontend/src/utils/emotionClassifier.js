@@ -69,18 +69,19 @@ export const EMOTIONS = {
  * @param {number} energy - Enerji seviyesi (0-1)
  * @returns {{ emotion: string, confidence: number, details: object }}
  */
-export function classifyEmotion(pitch, tempo, energy) {
+export function classifyEmotion(pitch, tempo, energy, dynamics = {}) {
   // Pitch, tempo ve enerjiyi normalize et (0-1 arası)
   const normalizedPitch = Math.min(Math.max((pitch - 80) / (300 - 80), 0), 1);
   const normalizedTempo = Math.min(Math.max(tempo / 8, 0), 1);
-  const normalizedEnergy = Math.min(Math.max(energy / 0.1, 0), 1);
+  // Mikrofon seviyesi genelde düşük — 0.05 RMS = %100 sayılır (eskiden 0.1 idi)
+  const normalizedEnergy = Math.min(Math.max(energy / 0.05, 0), 1);
 
   // Her duygu için skor hesapla
   const scores = {
     happy: calculateEmotionScore(normalizedPitch, normalizedTempo, normalizedEnergy, {
-      pitchTarget: 0.7,
-      tempoTarget: 0.7,
-      energyTarget: 0.7,
+      pitchTarget: 0.65,
+      tempoTarget: 0.6,
+      energyTarget: 0.5,
     }),
     sad: calculateEmotionScore(normalizedPitch, normalizedTempo, normalizedEnergy, {
       pitchTarget: 0.2,
@@ -90,27 +91,45 @@ export function classifyEmotion(pitch, tempo, energy) {
     angry: calculateEmotionScore(normalizedPitch, normalizedTempo, normalizedEnergy, {
       pitchTarget: 0.8,
       tempoTarget: 0.8,
-      energyTarget: 0.9,
+      energyTarget: 0.85,
     }),
     stressed: calculateEmotionScore(normalizedPitch, normalizedTempo, normalizedEnergy, {
       pitchTarget: 0.7,
-      tempoTarget: 0.7,
-      energyTarget: 0.5,
+      tempoTarget: 0.75,
+      energyTarget: 0.4,
     }),
     calm: calculateEmotionScore(normalizedPitch, normalizedTempo, normalizedEnergy, {
-      pitchTarget: 0.3,
-      tempoTarget: 0.3,
+      pitchTarget: 0.35,
+      tempoTarget: 0.35,
       energyTarget: 0.3,
     }),
     neutral: calculateEmotionScore(normalizedPitch, normalizedTempo, normalizedEnergy, {
       pitchTarget: 0.5,
       tempoTarget: 0.5,
-      energyTarget: 0.5,
+      energyTarget: 0.4,
     }),
   };
 
-  // Nötr bias — eğer hiçbir duygu baskın değilse nötr tercih et
-  scores.neutral *= 1.1;
+  const pitchRange = dynamics.pitchRange || 0;
+  const isExpressive = pitchRange >= 35 || (normalizedPitch >= 0.5 && normalizedEnergy >= 0.35);
+  const hasFastTempo = normalizedTempo >= 0.45;
+
+  if (isExpressive) {
+    scores.happy *= 1.28;
+  }
+
+  if (!hasFastTempo) {
+    scores.stressed *= 0.72;
+    scores.angry *= 0.78;
+  }
+
+  if (normalizedEnergy >= 0.45 && normalizedPitch >= 0.45) {
+    scores.happy *= 1.18;
+    scores.neutral *= 0.85;
+  }
+
+  // Nötr bias düşük tutulur; aksi halde kısa ve neşeli konuşmalar nötre düşer.
+  scores.neutral *= 0.95;
 
   // En yüksek skorlu duyguyu bul
   let bestEmotion = 'neutral';
@@ -137,6 +156,7 @@ export function classifyEmotion(pitch, tempo, energy) {
       energy: Math.round(normalizedEnergy * 100),
       normalizedPitch: Math.round(normalizedPitch * 100),
       normalizedTempo: Math.round(normalizedTempo * 100),
+      pitchRange: Math.round(pitchRange),
     },
   };
 }

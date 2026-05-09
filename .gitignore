@@ -1,6 +1,41 @@
+# ── Python ──────────────────────────────────────────
 backend/.venv/
-backend/__pycache__/
-backend/services/__pycache__/
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+*.egg-info/
+
+# ── Ortam & sırlar ───────────────────────────────────
+backend/.env
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ── Node / Frontend ──────────────────────────────────
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# ── Docker ───────────────────────────────────────────
+# (Dockerfile ve docker-compose.yml repoda kalır)
+
+# ── Editör & OS ──────────────────────────────────────
 .DS_Store
+.DS_Store?
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Loglar & geçici ──────────────────────────────────
+*.log
+*.log.*
+tmp/
+temp/

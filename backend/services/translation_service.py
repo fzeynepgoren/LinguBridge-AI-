@@ -15,6 +15,7 @@ SUPPORTED_LANGUAGES = {
     "de": "Deutsch",
     "fr": "Français",
     "es": "Español",
+    "it": "Italiano",
     "ja": "日本語",
     "ko": "한국어",
     "ar": "العربية",

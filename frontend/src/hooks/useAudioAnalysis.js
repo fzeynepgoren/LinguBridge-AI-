@@ -11,15 +11,17 @@ import { classifyEmotion } from '../utils/emotionClassifier';
 export default function useAudioAnalysis() {
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // Duygu/meta verileri: 450ms throttle ile güncellenir (görsel titreme önleme)
   const [audioData, setAudioData] = useState({
     pitch: 0,
     tempo: 0,
     energy: 0,
     emotion: 'neutral',
     confidence: 0,
-    waveform: new Float32Array(0),
     details: {},
   });
+  // Dalga formu: her frame güncellenir (WaveformVisualizer için)
+  const [waveform, setWaveform] = useState(new Float32Array(0));
   const [error, setError] = useState(null);
 
   const audioContextRef = useRef(null);
@@ -27,10 +29,14 @@ export default function useAudioAnalysis() {
   const sourceRef = useRef(null);
   const streamRef = useRef(null);
   const animationRef = useRef(null);
+  const analyzeRef = useRef(null);
   const bufferRef = useRef(null);
+  // Throttle — emotion/meta saniyede ~2 kez güncellenir
+  const lastMetaUpdateRef = useRef(0);
 
   // Pitch geçmişi — smoothing için
   const pitchHistoryRef = useRef([]);
+  // 12 frame → ~200ms geçmişte dominant duygu seçilir
   const emotionHistoryRef = useRef([]);
 
   /**
@@ -66,15 +72,19 @@ export default function useAudioAnalysis() {
       pitchHistoryRef.current.length > 0
         ? pitchHistoryRef.current.reduce((a, b) => a + b, 0) / pitchHistoryRef.current.length
         : 0;
+    const pitchRange =
+      pitchHistoryRef.current.length > 1
+        ? Math.max(...pitchHistoryRef.current) - Math.min(...pitchHistoryRef.current)
+        : 0;
 
     // Duygu sınıflandırması
     let emotionResult = { emotion: 'neutral', confidence: 0, details: {} };
     if (smoothedPitch > 0 && energy > 0.005) {
-      emotionResult = classifyEmotion(smoothedPitch, tempo, energy);
+      emotionResult = classifyEmotion(smoothedPitch, tempo, energy, { pitchRange });
 
-      // Emotion smoothing (son 3 sonucun modu)
+      // Emotion smoothing (son 12 frame'in modu — ~200ms pencere)
       emotionHistoryRef.current.push(emotionResult.emotion);
-      if (emotionHistoryRef.current.length > 3) {
+      if (emotionHistoryRef.current.length > 12) {
         emotionHistoryRef.current.shift();
       }
 
@@ -95,17 +105,28 @@ export default function useAudioAnalysis() {
       waveform[i] = bufferRef.current[i * step] || 0;
     }
 
-    setAudioData({
-      pitch: Math.round(smoothedPitch),
-      tempo: Math.round(tempo * 10) / 10,
-      energy: Math.round(energy * 1000) / 1000,
-      emotion: emotionResult.emotion,
-      confidence: emotionResult.confidence,
-      waveform,
-      details: emotionResult.details || {},
-    });
+    // Dalga formu her frame güncellenir (görselleştirici için)
+    setWaveform(waveform);
 
-    animationRef.current = requestAnimationFrame(analyze);
+    // Duygu/meta: en fazla 450ms'de bir güncellenir → EmotionDisplay titremez
+    const now = Date.now();
+    if (now - lastMetaUpdateRef.current >= 450) {
+      lastMetaUpdateRef.current = now;
+      setAudioData({
+        pitch: Math.round(smoothedPitch),
+        tempo: Math.round(tempo * 10) / 10,
+        energy: Math.round(energy * 1000) / 1000,
+        emotion: emotionResult.emotion,
+        confidence: emotionResult.confidence,
+        details: emotionResult.details || {},
+      });
+    }
+
+    animationRef.current = requestAnimationFrame(() => analyzeRef.current?.());
+  }, []);
+
+  useEffect(() => {
+    analyzeRef.current = analyze;
   }, []);
 
   /**
@@ -141,7 +162,7 @@ export default function useAudioAnalysis() {
       // Analiz döngüsünü başlat
       pitchHistoryRef.current = [];
       emotionHistoryRef.current = [];
-      animationRef.current = requestAnimationFrame(analyze);
+      animationRef.current = requestAnimationFrame(() => analyzeRef.current?.());
     } catch (err) {
       console.error('Mikrofon erişim hatası:', err);
       setError(
@@ -192,6 +213,7 @@ export default function useAudioAnalysis() {
     isRecording,
     isAnalyzing,
     audioData,
+    waveform,
     error,
     startRecording,
     stopRecording,

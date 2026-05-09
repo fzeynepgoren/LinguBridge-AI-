@@ -2,6 +2,8 @@
  * LinguBridge AI — useSpeechRecognition Hook
  * Web Speech API ile gerçek zamanlı konuşma tanıma (STT).
  * Tamamen ücretsiz, tarayıcı-native.
+ *
+ * Closure stale-state sorununu önlemek için isListening yerine ref kullanılır.
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -11,31 +13,36 @@ export default function useSpeechRecognition(language = 'tr-TR') {
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [error, setError] = useState(null);
-  const [isSupported, setIsSupported] = useState(false);
+  const isSupported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const recognitionRef = useRef(null);
+  // Auto-restart kararı için canlı ref (closure'dan kaçınır)
+  const shouldListenRef = useRef(false);
+  const languageRef = useRef(language);
+  const createRecognitionRef = useRef(null);
 
-  // Tarayıcı desteğini kontrol et
+  // Dil değişimini her zaman güncel tut
   useEffect(() => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    setIsSupported(!!SpeechRecognition);
+    languageRef.current = language;
+  }, [language]);
+
+  const clearTranscript = useCallback(() => {
+    setTranscript('');
+    setInterimTranscript('');
   }, []);
 
   /**
-   * Konuşma tanımayı başlatır.
+   * Yeni bir SpeechRecognition instance kurar.
+   * Auto-restart için her seferinde yeni instance üretmek bazı tarayıcılarda
+   * "InvalidStateError" sorununu önler.
    */
-  const startListening = useCallback(() => {
+  const createRecognition = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setError('Bu tarayıcı konuşma tanımayı desteklemiyor. Chrome kullanmanızı öneriyoruz.');
-      return;
-    }
+    if (!SpeechRecognition) return null;
 
     const recognition = new SpeechRecognition();
-    recognition.lang = language;
+    recognition.lang = languageRef.current;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
@@ -43,89 +50,97 @@ export default function useSpeechRecognition(language = 'tr-TR') {
     recognition.onstart = () => {
       setIsListening(true);
       setError(null);
-      clearTranscript();
     };
 
     recognition.onresult = (event) => {
       let newFinalText = '';
       let interimText = '';
-
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        if (result.isFinal) {
-          newFinalText += result[0].transcript + ' ';
-        } else {
-          interimText += result[0].transcript;
-        }
+        if (result.isFinal) newFinalText += result[0].transcript + ' ';
+        else interimText += result[0].transcript;
       }
-
-      if (newFinalText) {
-        setTranscript((prev) => prev + newFinalText);
-      }
+      if (newFinalText) setTranscript((prev) => prev + newFinalText);
       setInterimTranscript(interimText);
     };
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
-      if (event.error === 'not-allowed') {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         setError('Mikrofon erişimi reddedildi.');
-      } else if (event.error === 'no-speech') {
-        // Konuşma algılanmadı — normal durum, hata gösterme
+        shouldListenRef.current = false;
+      } else if (event.error === 'no-speech' || event.error === 'aborted') {
+        // sessizlik / manuel durdurma — yutulur
       } else {
         setError(`Konuşma tanıma hatası: ${event.error}`);
       }
     };
 
     recognition.onend = () => {
-      // Continuous mode'da otomatik yeniden başlat
-      if (recognitionRef.current && isListening) {
+      if (shouldListenRef.current) {
         try {
-          recognition.start();
-        } catch {
-          setIsListening(false);
+          const next = createRecognitionRef.current?.();
+          if (next) {
+            recognitionRef.current = next;
+            next.start();
+            return;
+          }
+        } catch (err) {
+          console.warn('STT auto-restart başarısız:', err);
         }
-      } else {
-        setIsListening(false);
       }
+      setIsListening(false);
+      setInterimTranscript('');
     };
 
+    return recognition;
+  }, []);
+
+  useEffect(() => {
+    createRecognitionRef.current = createRecognition;
+  }, [createRecognition]);
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError('Bu tarayıcı konuşma tanımayı desteklemiyor. Chrome kullanmanızı öneriyoruz.');
+      return;
+    }
+    if (shouldListenRef.current) return;
+
+    clearTranscript();
+    shouldListenRef.current = true;
+
+    const recognition = createRecognition();
+    if (!recognition) return;
     recognitionRef.current = recognition;
 
     try {
       recognition.start();
     } catch (err) {
       setError('Konuşma tanıma başlatılamadı.');
+      shouldListenRef.current = false;
       console.error(err);
     }
-  }, [language, isListening]);
+  }, [clearTranscript, createRecognition]);
 
-  /**
-   * Konuşma tanımayı durdurur.
-   */
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.onend = null; // Auto-restart'ı engelle
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
+    shouldListenRef.current = false;
+    const rec = recognitionRef.current;
+    if (rec) {
+      try { rec.stop(); } catch { /* ignore */ }
     }
+    recognitionRef.current = null;
     setIsListening(false);
     setInterimTranscript('');
   }, []);
 
-  /**
-   * Transkripti temizler.
-   */
-  const clearTranscript = useCallback(() => {
-    setTranscript('');
-    setInterimTranscript('');
-  }, []);
-
-  // Cleanup
   useEffect(() => {
     return () => {
+      shouldListenRef.current = false;
       if (recognitionRef.current) {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.stop();
+        try { recognitionRef.current.stop(); } catch { /* ignore */ }
       }
     };
   }, []);

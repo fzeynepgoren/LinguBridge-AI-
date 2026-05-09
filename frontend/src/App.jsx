@@ -1,13 +1,13 @@
 /**
  * LinguBridge AI — Ana Uygulama
  * Duygu ve Kültür Odaklı Akıllı İletişim Asistanı
- * 
+ *
  * Tüm modülleri orkestre eder:
  * - Ses kaydı & konuşma tanıma (STT)
  * - Gerçek zamanlı duygu analizi (pitch/tempo/enerji)
- * - Akıllı çeviri + nezaket adaptasyonu
- * - Bağlamsal yanıt önerileri
+ * - LLM destekli çeviri + nezaket adaptasyonu + öneri (tek endpoint)
  * - Adaptif arayüz (duyguya göre tema)
+ * - Duygu aktarımlı TTS
  */
 
 import { useState, useCallback, useEffect } from 'react';
@@ -19,24 +19,25 @@ import EmotionDisplay from './components/EmotionDisplay';
 import TranslationPanel from './components/TranslationPanel';
 import PolitenessSlider from './components/PolitenessSlider';
 import SuggestionCards from './components/SuggestionCards';
-import { translateText, getSuggestions } from './utils/api';
+import IncomingMessageAnalyzer from './components/IncomingMessageAnalyzer';
+import { processMessage } from './utils/api';
 import { EMOTIONS } from './utils/emotionClassifier';
 import './App.css';
 
 // STT dil kodları
 const STT_LANG_MAP = {
-  tr: 'tr-TR',
-  en: 'en-US',
-  de: 'de-DE',
-  fr: 'fr-FR',
-  es: 'es-ES',
-  ja: 'ja-JP',
-  ko: 'ko-KR',
-  ar: 'ar-SA',
-  zh: 'zh-CN',
-  ru: 'ru-RU',
-  it: 'it-IT',
-  pt: 'pt-PT',
+  tr: 'tr-TR', en: 'en-US', de: 'de-DE', fr: 'fr-FR',
+  es: 'es-ES', ja: 'ja-JP', ko: 'ko-KR', ar: 'ar-SA',
+  zh: 'zh-CN', ru: 'ru-RU', it: 'it-IT', pt: 'pt-PT',
+};
+
+// Backend'den gelen fallback nedenleri — kısa Türkçe etiketler
+const FALLBACK_REASON_LABEL = {
+  rate_limit: 'Kota aşıldı',
+  not_configured: 'API key yok',
+  unavailable: 'LLM kapalı',
+  response_error: 'Yanıt hatası',
+  unknown: 'Bilinmiyor',
 };
 
 export default function App() {
@@ -52,16 +53,25 @@ export default function App() {
   const [politenessLabel, setPolitenessLabel] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsReasoning, setSuggestionsReasoning] = useState('');
-  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
-  const [backendStatus, setBackendStatus] = useState('checking'); // 'online', 'offline', 'checking'
+  const [backendStatus, setBackendStatus] = useState('checking'); // 'online' | 'offline' | 'checking'
+  const [llmMode, setLlmMode] = useState('unknown'); // 'llm' | 'fallback' | 'unknown'
+  const [fallbackReason, setFallbackReason] = useState(null);
   const [conversationHistory, setConversationHistory] = useState([]);
+  const [ttsHints, setTtsHints] = useState(null);
+  const [emotionOverride, setEmotionOverride] = useState('auto');
 
   // === Hooks ===
   const audioAnalysis = useAudioAnalysis();
   const speechRecognition = useSpeechRecognition(STT_LANG_MAP[sourceLang] || 'tr-TR');
 
-  // Duygu durumuna göre adaptif arka plan
-  const currentEmotion = audioAnalysis.audioData.emotion || 'neutral';
+  // Duygu durumu — adaptif arka plan ve TTS için
+  const detectedEmotion = audioAnalysis.audioData.emotion || 'neutral';
+  const detectionConfidence = audioAnalysis.audioData.confidence || 0;
+  // Düşük güvende otomatik mod 'neutral' sayılır ama UI 'belirsiz' rozeti gösterir
+  const isAutoUncertain =
+    emotionOverride === 'auto' && audioAnalysis.isRecording && detectionConfidence > 0 && detectionConfidence < 35;
+  const effectiveAutoEmotion = isAutoUncertain ? 'neutral' : detectedEmotion;
+  const currentEmotion = emotionOverride === 'auto' ? effectiveAutoEmotion : emotionOverride;
   const emotionData = EMOTIONS[currentEmotion] || EMOTIONS.neutral;
 
   // === Backend sağlık kontrolü ===
@@ -70,7 +80,9 @@ export default function App() {
       try {
         const res = await fetch('http://localhost:8000/api/health');
         if (res.ok) {
+          const data = await res.json();
           setBackendStatus('online');
+          setLlmMode(data.llm === 'configured' ? 'llm' : 'fallback');
         } else {
           setBackendStatus('offline');
         }
@@ -86,73 +98,127 @@ export default function App() {
   // STT transkriptini kaynak metne aktar
   useEffect(() => {
     if (speechRecognition.transcript) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- STT sonucu textarea ile senkron tutulur.
       setSourceText(speechRecognition.transcript.trim());
     }
   }, [speechRecognition.transcript]);
 
-  // === Handlers ===
-
+  // === Çeviri akışı ===
   const handleTranslate = useCallback(async () => {
-    if (!sourceText.trim()) return;
+    if (!sourceText.trim() || isTranslating) return;
 
     setIsTranslating(true);
-    setIsSuggestionsLoading(true);
 
     try {
-      // Çeviri + nezaket adaptasyonu
-      const result = await translateText(
-        sourceText,
+      const result = await processMessage({
+        text: sourceText,
         sourceLang,
         targetLang,
         politenessLevel,
-        currentEmotion
-      );
-
-      setTranslatedText(result.translated_text);
-      setAdaptedText(result.adapted_text);
-      setChangesMade(result.changes_made || []);
-      setPolitenessLabel(result.politeness_label || '');
-
-      // Konuşma geçmişine ekle
-      const newEntry = {
-        source: sourceText,
-        translated: result.adapted_text,
         emotion: currentEmotion,
-        timestamp: Date.now(),
-      };
-      setConversationHistory((prev) => [...prev.slice(-9), newEntry]);
+        conversationHistory: conversationHistory.slice(-5),
+      });
 
-      // Bağlamsal öneriler
-      try {
-        const sugResult = await getSuggestions(
-          sourceText,
-          sourceLang,
-          currentEmotion,
-          politenessLevel,
-          conversationHistory.map((h) => h.source)
-        );
-        setSuggestions(sugResult.suggestions || []);
-        setSuggestionsReasoning(sugResult.reasoning || '');
-      } catch {
-        setSuggestions([]);
-      }
+      setTranslatedText(result.translated_text || '');
+      setAdaptedText(result.adapted_text || '');
+      setChangesMade(result.changes_explained || []);
+      setPolitenessLabel(result.politeness_label || '');
+      setSuggestions(result.suggestions || []);
+      setSuggestionsReasoning(result.reasoning || '');
+      setTtsHints(result.tts_hints || null);
+      if (result.mode) setLlmMode(result.mode);
+      setFallbackReason(result.mode === 'fallback' ? (result.fallback_reason || 'unknown') : null);
+
+      // Konuşma geçmişine ekle (yeni format: role, text, emotion)
+      setConversationHistory((prev) => [
+        ...prev.slice(-9),
+        {
+          role: 'user',
+          text: sourceText,
+          emotion: currentEmotion,
+          timestamp: Date.now(),
+        },
+        {
+          role: 'partner',
+          text: result.adapted_text || '',
+          emotion: 'neutral',
+          timestamp: Date.now(),
+        },
+      ]);
     } catch (err) {
       console.error('Çeviri hatası:', err);
       setAdaptedText('[Çeviri hatası — backend çalıştığından emin olun]');
+      setSuggestions([]);
     } finally {
       setIsTranslating(false);
-      setIsSuggestionsLoading(false);
     }
-  }, [sourceText, sourceLang, targetLang, politenessLevel, currentEmotion, conversationHistory]);
+  }, [
+    sourceText,
+    sourceLang,
+    targetLang,
+    politenessLevel,
+    currentEmotion,
+    conversationHistory,
+    isTranslating,
+  ]);
 
   const handleSelectSuggestion = useCallback((text) => {
     setSourceText(text);
   }, []);
 
-  const handleSourceLangChange = useCallback((lang) => {
-    setSourceLang(lang);
-    speechRecognition.clearTranscript();
-  }, [speechRecognition]);
+  // Slider değişince mevcut bir adapte metin varsa otomatik yeniden çevir (debounced)
+  useEffect(() => {
+    if (!adaptedText || !sourceText.trim()) return;
+    if (isTranslating) return;
+    const id = setTimeout(() => {
+      handleTranslate();
+    }, 700);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [politenessLevel]);
+
+  const handleSourceLangChange = useCallback(
+    (lang) => {
+      setSourceLang(lang);
+      speechRecognition.clearTranscript();
+      // Dil değişince geçmiş yeni oturuma karışmasın
+      setConversationHistory([]);
+    },
+    [speechRecognition],
+  );
+
+  const handleTargetLangChange = useCallback((lang) => {
+    setTargetLang(lang);
+    setConversationHistory([]);
+    setSuggestions([]);
+    setAdaptedText('');
+    setTranslatedText('');
+  }, []);
+
+  // === Klavye kısayolları (a11y) ===
+  useEffect(() => {
+    const onKey = (e) => {
+      // Cmd/Ctrl + Enter → çevir
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleTranslate();
+        return;
+      }
+      // 1/2/3 → öneri seç (input içinde değilken)
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (['1', '2', '3'].includes(e.key)) {
+        const idx = Number(e.key) - 1;
+        const s = suggestions[idx];
+        if (s) {
+          e.preventDefault();
+          handleSelectSuggestion(s.text);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleTranslate, handleSelectSuggestion, suggestions]);
 
   return (
     <div
@@ -166,21 +232,40 @@ export default function App() {
       <div
         className="adaptive-background"
         style={{ background: emotionData.bgGradient }}
+        aria-hidden="true"
       />
 
       {/* Header */}
       <header className="app-header">
         <div className="header-content">
           <div className="logo">
-            <span className="logo-icon">🌉</span>
+            <span className="logo-icon" aria-hidden="true">🌉</span>
             <div>
               <h1>LinguBridge AI</h1>
               <p className="subtitle">Duygu ve Kültür Odaklı Akıllı İletişim Asistanı</p>
             </div>
           </div>
           <div className="header-status">
-            <span className={`backend-status ${backendStatus}`}>
-              <span className="status-indicator"></span>
+            {backendStatus === 'online' && (
+              <span
+                className={`mode-badge ${llmMode === 'llm' ? 'mode-llm' : 'mode-fallback'}`}
+                title={
+                  llmMode === 'llm'
+                    ? 'LLM aktif'
+                    : `Kural tabanlı yedek mod${fallbackReason ? ` — sebep: ${FALLBACK_REASON_LABEL[fallbackReason] || fallbackReason}` : ''}`
+                }
+              >
+                {llmMode === 'llm'
+                  ? '🤖 LLM'
+                  : `⚡ Fallback${fallbackReason ? ` • ${FALLBACK_REASON_LABEL[fallbackReason] || fallbackReason}` : ''}`}
+              </span>
+            )}
+            <span
+              className={`backend-status ${backendStatus}`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="status-indicator" aria-hidden="true"></span>
               {backendStatus === 'online'
                 ? 'Backend Aktif'
                 : backendStatus === 'offline'
@@ -193,23 +278,22 @@ export default function App() {
 
       {/* Main Content */}
       <main className="app-main">
-        {/* Offline uyarısı */}
         {backendStatus === 'offline' && (
-          <div className="offline-banner">
-            <span>⚠️</span>
+          <div className="offline-banner" role="alert">
+            <span aria-hidden="true">⚠️</span>
             <div>
               <strong>Backend sunucusu çalışmıyor.</strong>
               <p>
                 Terminalde şu komutu çalıştırın:{' '}
-                <code>cd backend && pip install -r requirements.txt && uvicorn main:app --reload</code>
+                <code>cd backend && uvicorn main:app --reload</code>
               </p>
             </div>
           </div>
         )}
 
-        {/* Sol Panel: Ses & Duygu */}
         <div className="panel-grid">
-          <section className="panel voice-panel">
+          {/* Sol Panel: Ses & Duygu */}
+          <section className="panel voice-panel" aria-label="Ses ve duygu paneli">
             <AudioRecorder
               isRecording={audioAnalysis.isRecording}
               isListening={speechRecognition.isListening}
@@ -221,14 +305,13 @@ export default function App() {
             />
 
             <WaveformVisualizer
-              waveform={audioAnalysis.audioData.waveform}
+              waveform={audioAnalysis.waveform}
               emotion={currentEmotion}
               isActive={audioAnalysis.isRecording}
             />
 
-            {/* Canlı transkript */}
             {speechRecognition.isListening && speechRecognition.interimTranscript && (
-              <div className="live-transcript">
+              <div className="live-transcript" aria-live="polite">
                 <span className="transcript-label">🎙️ Canlı:</span>
                 <span className="transcript-text">{speechRecognition.interimTranscript}</span>
               </div>
@@ -236,17 +319,18 @@ export default function App() {
 
             <EmotionDisplay
               emotion={currentEmotion}
+              detectedEmotion={detectedEmotion}
+              emotionOverride={emotionOverride}
+              onEmotionOverrideChange={setEmotionOverride}
               confidence={audioAnalysis.audioData.confidence}
               details={audioAnalysis.audioData.details}
+              isUncertain={isAutoUncertain}
             />
           </section>
 
           {/* Orta Panel: Çeviri & Nezaket */}
-          <section className="panel translation-main-panel">
-            <PolitenessSlider
-              value={politenessLevel}
-              onChange={setPolitenessLevel}
-            />
+          <section className="panel translation-main-panel" aria-label="Çeviri paneli">
+            <PolitenessSlider value={politenessLevel} onChange={setPolitenessLevel} />
 
             <TranslationPanel
               sourceText={sourceText}
@@ -256,24 +340,26 @@ export default function App() {
               sourceLang={sourceLang}
               targetLang={targetLang}
               onSourceLangChange={handleSourceLangChange}
-              onTargetLangChange={setTargetLang}
+              onTargetLangChange={handleTargetLangChange}
               onTranslate={handleTranslate}
               isTranslating={isTranslating}
               changesMade={changesMade}
               politenessLabel={politenessLabel}
+              emotion={currentEmotion}
+              ttsHints={ttsHints}
             />
           </section>
 
           {/* Sağ Panel: Öneriler & Geçmiş */}
-          <section className="panel suggestions-panel">
+          <section className="panel suggestions-panel" aria-label="Öneriler ve geçmiş">
             <SuggestionCards
               suggestions={suggestions}
               reasoning={suggestionsReasoning}
               onSelectSuggestion={handleSelectSuggestion}
-              isLoading={isSuggestionsLoading}
+              isLoading={isTranslating}
+              sourceLang={sourceLang}
             />
 
-            {/* Konuşma Geçmişi */}
             {conversationHistory.length > 0 && (
               <div className="conversation-history">
                 <h3>📜 Konuşma Geçmişi</h3>
@@ -282,14 +368,15 @@ export default function App() {
                     .slice()
                     .reverse()
                     .map((entry, i) => (
-                      <div key={i} className="history-item">
+                      <div key={i} className={`history-item history-${entry.role}`}>
                         <div className="history-source">
-                          <span className="history-emotion">
-                            {EMOTIONS[entry.emotion]?.emoji || '😐'}
+                          <span className="history-emotion" aria-hidden="true">
+                            {entry.role === 'user'
+                              ? EMOTIONS[entry.emotion]?.emoji || '😐'
+                              : '🌐'}
                           </span>
-                          {entry.source}
+                          {entry.text}
                         </div>
-                        <div className="history-translated">→ {entry.translated}</div>
                       </div>
                     ))}
                 </div>
@@ -297,12 +384,20 @@ export default function App() {
             )}
           </section>
         </div>
+
+        <IncomingMessageAnalyzer
+          messageLang={targetLang}
+          replyLang={sourceLang}
+          onUseReply={handleSelectSuggestion}
+        />
       </main>
 
       {/* Footer */}
       <footer className="app-footer">
         <p>
           LinguBridge AI — HCI Projesi | Duygu Analizi + Kültürel Adaptasyon + Akıllı İletişim
+          {' · '}
+          <kbd>⌘/Ctrl</kbd>+<kbd>Enter</kbd> ile çevir, <kbd>1/2/3</kbd> ile öneri seç
         </p>
       </footer>
     </div>

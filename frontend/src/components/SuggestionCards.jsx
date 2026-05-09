@@ -9,12 +9,20 @@ export default function SuggestionCards({
   reasoning = '',
   onSelectSuggestion,
   isLoading = false,
+  sourceLang = 'tr',
 }) {
+  const languageNames = {
+    tr: 'Türkçe', en: 'English', de: 'Deutsch', fr: 'Français',
+    es: 'Español', ja: '日本語', ko: '한국어', ar: 'العربية',
+    zh: '中文', ru: 'Русский', it: 'Italiano', pt: 'Português',
+  };
+  const sourceLanguageName = languageNames[sourceLang] || sourceLang;
+
   if (isLoading) {
     return (
       <div className="suggestion-cards">
         <div className="suggestion-header">
-          <h3>💡 Yanıt Önerileri</h3>
+          <h3>💡 Sonraki Cevabın</h3>
         </div>
         <div className="suggestion-loading">
           <div className="loading-dots">
@@ -30,7 +38,7 @@ export default function SuggestionCards({
     return (
       <div className="suggestion-cards">
         <div className="suggestion-header">
-          <h3>💡 Yanıt Önerileri</h3>
+          <h3>💡 Sonraki Cevabın</h3>
         </div>
         <div className="suggestion-empty">
           <p>Çeviri yapıldığında burada bağlamsal yanıt önerileri görünecek.</p>
@@ -42,9 +50,13 @@ export default function SuggestionCards({
   return (
     <div className="suggestion-cards">
       <div className="suggestion-header">
-        <h3>💡 Yanıt Önerileri</h3>
+        <h3>💡 Sonraki Cevabın</h3>
+        <span className="suggestion-language">Kaynak: {sourceLanguageName}</span>
         {reasoning && <span className="suggestion-reasoning">{reasoning}</span>}
       </div>
+      <p className="suggestion-hint">
+        Bu seçenekler senin yazabileceğin cevap alternatifleridir.
+      </p>
 
       <div className="suggestion-grid">
         {suggestions.map((suggestion, index) => (
