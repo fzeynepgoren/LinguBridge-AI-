@@ -20,6 +20,9 @@ import TranslationPanel from './components/TranslationPanel';
 import PolitenessSlider from './components/PolitenessSlider';
 import SuggestionCards from './components/SuggestionCards';
 import IncomingMessageAnalyzer from './components/IncomingMessageAnalyzer';
+import StepIndicator from './components/StepIndicator';
+import ShortcutsHelp from './components/ShortcutsHelp';
+import { ToastContainer, useToasts } from './components/Toast';
 import { processMessage } from './utils/api';
 import { EMOTIONS } from './utils/emotionClassifier';
 import './App.css';
@@ -59,8 +62,11 @@ export default function App() {
   const [conversationHistory, setConversationHistory] = useState([]);
   const [ttsHints, setTtsHints] = useState(null);
   const [emotionOverride, setEmotionOverride] = useState('auto');
+  const [translateSuccess, setTranslateSuccess] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // === Hooks ===
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const audioAnalysis = useAudioAnalysis();
   const speechRecognition = useSpeechRecognition(STT_LANG_MAP[sourceLang] || 'tr-TR');
 
@@ -105,7 +111,24 @@ export default function App() {
 
   // === Çeviri akışı ===
   const handleTranslate = useCallback(async () => {
-    if (!sourceText.trim() || isTranslating) return;
+    // HCI: Error prevention — kullanıcı boş alanla çevir derse bilgilendir
+    if (!sourceText.trim()) {
+      pushToast({
+        type: 'warning',
+        title: 'Önce bir metin gerekli',
+        message: 'Mikrofona konuşun ya da metin alanına yazın, sonra tekrar deneyin.',
+      });
+      return;
+    }
+    if (sourceLang === targetLang) {
+      pushToast({
+        type: 'warning',
+        title: 'Kaynak ve hedef dil aynı',
+        message: 'Anlamlı bir çeviri için iki farklı dil seçin.',
+      });
+      return;
+    }
+    if (isTranslating) return;
 
     setIsTranslating(true);
 
@@ -129,6 +152,18 @@ export default function App() {
       if (result.mode) setLlmMode(result.mode);
       setFallbackReason(result.mode === 'fallback' ? (result.fallback_reason || 'unknown') : null);
 
+      // HCI: Visibility of system status — başarı geri bildirimi
+      setTranslateSuccess(true);
+      setTimeout(() => setTranslateSuccess(false), 1500);
+      pushToast({
+        type: 'success',
+        title: result.mode === 'llm' ? 'Çeviri hazır' : 'Çeviri hazır (yedek mod)',
+        message: result.mode === 'fallback'
+          ? 'LLM kullanılamadı, kural tabanlı yedek motor devrede.'
+          : 'Yapay zekâ destekli çeviri ve nezaket adaptasyonu tamamlandı.',
+        duration: 2500,
+      });
+
       // Konuşma geçmişine ekle (yeni format: role, text, emotion)
       setConversationHistory((prev) => [
         ...prev.slice(-9),
@@ -149,6 +184,12 @@ export default function App() {
       console.error('Çeviri hatası:', err);
       setAdaptedText('[Çeviri hatası — backend çalıştığından emin olun]');
       setSuggestions([]);
+      pushToast({
+        type: 'error',
+        title: 'Çeviri başarısız',
+        message: 'Backend\'e ulaşılamadı. Sunucunun çalıştığından emin olun.',
+        duration: 5000,
+      });
     } finally {
       setIsTranslating(false);
     }
@@ -160,6 +201,7 @@ export default function App() {
     currentEmotion,
     conversationHistory,
     isTranslating,
+    pushToast,
   ]);
 
   const handleSelectSuggestion = useCallback((text) => {
@@ -207,6 +249,12 @@ export default function App() {
       // 1/2/3 → öneri seç (input içinde değilken)
       const tag = (e.target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      // ? → kısayol overlay aç/kapa
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+        return;
+      }
       if (['1', '2', '3'].includes(e.key)) {
         const idx = Number(e.key) - 1;
         const s = suggestions[idx];
@@ -219,6 +267,17 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [handleTranslate, handleSelectSuggestion, suggestions]);
+
+  // HCI: Visibility — kullanıcının şu an hangi adımda olduğunu hesapla
+  const activeStep = adaptedText
+    ? (suggestions.length > 0 ? 4 : 3)
+    : sourceText.trim()
+      ? 2
+      : 1;
+  const completedSteps = [];
+  if (sourceText.trim()) completedSteps.push(1);
+  if (sourceText.trim() && politenessLevel !== 50) completedSteps.push(2);
+  if (adaptedText) completedSteps.push(3);
 
   return (
     <div
@@ -275,6 +334,8 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      <StepIndicator activeStep={activeStep} completed={completedSteps} />
 
       {/* Main Content */}
       <main className="app-main">
@@ -347,6 +408,7 @@ export default function App() {
               politenessLabel={politenessLabel}
               emotion={currentEmotion}
               ttsHints={ttsHints}
+              translateSuccess={translateSuccess}
             />
           </section>
 
@@ -397,9 +459,24 @@ export default function App() {
         <p>
           LinguBridge AI — HCI Projesi | Duygu Analizi + Kültürel Adaptasyon + Akıllı İletişim
           {' · '}
-          <kbd>⌘/Ctrl</kbd>+<kbd>Enter</kbd> ile çevir, <kbd>1/2/3</kbd> ile öneri seç
+          <kbd>⌘/Ctrl</kbd>+<kbd>Enter</kbd> ile çevir, <kbd>1/2/3</kbd> ile öneri seç,
+          <kbd>?</kbd> tuşu yardım
         </p>
       </footer>
+
+      {/* Yüzen Yardım Butonu */}
+      <button
+        type="button"
+        className="help-fab"
+        onClick={() => setShowShortcuts(true)}
+        aria-label="Klavye kısayollarını göster"
+        title="Klavye kısayolları (?)"
+      >
+        ?
+      </button>
+
+      <ShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
