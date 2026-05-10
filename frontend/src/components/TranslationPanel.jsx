@@ -37,8 +37,17 @@ export default function TranslationPanel({
   politenessLabel = '',
   emotion = 'neutral',
   ttsHints = null,
+  translateSuccess = false,
 }) {
   const [showChanges, setShowChanges] = useState(false);
+  const MAX_CHARS = 500;
+  const charCount = sourceText.length;
+  const sameLang = sourceLang === targetLang;
+  const charClass = charCount > MAX_CHARS
+    ? 'char-count over-limit'
+    : charCount > MAX_CHARS * 0.85
+    ? 'char-count near-limit'
+    : 'char-count';
 
   const handleSwapLanguages = () => {
     onSourceLangChange(targetLang);
@@ -99,8 +108,15 @@ export default function TranslationPanel({
             >
               🔊
             </button>
-            <span className="char-count">{sourceText.length} karakter</span>
+            <span className={charClass} aria-live="polite">
+              {charCount} / {MAX_CHARS}
+            </span>
           </div>
+          {sameLang && (
+            <p className="inline-warning" role="alert">
+              ⚠️ Kaynak ve hedef dil aynı — farklı bir dil seçin.
+            </p>
+          )}
         </div>
 
         {/* Swap Butonu */}
@@ -198,14 +214,18 @@ export default function TranslationPanel({
         </div>
       </div>
 
-      {/* Çevir Butonu */}
+      {/* Çevir Butonu — disabled değil; boş olunca App.jsx toast gösterir */}
       <button
-        className="translate-btn"
+        className={`translate-btn${isTranslating ? ' loading' : ''}${translateSuccess ? ' success' : ''}`}
         onClick={onTranslate}
-        disabled={!sourceText.trim() || isTranslating}
         id="translate-btn"
+        aria-busy={isTranslating}
       >
-        {isTranslating ? '⏳ Çevriliyor...' : '🚀 Çevir & Adapte Et'}
+        {isTranslating
+          ? '⏳ Çevriliyor...'
+          : translateSuccess
+          ? '✓ Çevrildi'
+          : '🚀 Çevir & Adapte Et'}
       </button>
 
       {/* Nezaket değişiklikleri */}
