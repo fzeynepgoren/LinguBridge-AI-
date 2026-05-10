@@ -163,18 +163,45 @@ EN_POLITENESS_PREFIXES = {
 
 def get_politeness_level(slider_value: int) -> str:
     """
-    Slider değerini (0-100) nezaket seviyesine çevirir.
-    
-    0-33:   informal (samimi)
-    34-66:  neutral (nötr)
-    67-100: formal (resmi)
+    Slider değerini (0-100) 5 seviyeli nezaket etiketine çevirir.
+
+    0-15:    very_informal
+    16-40:   informal
+    41-60:   neutral
+    61-85:   formal
+    86-100:  very_formal
     """
-    if slider_value <= 33:
+    if slider_value <= 15:
+        return "very_informal"
+    if slider_value <= 40:
         return "informal"
-    elif slider_value <= 66:
+    if slider_value <= 60:
         return "neutral"
-    else:
+    if slider_value <= 85:
         return "formal"
+    return "very_formal"
+
+
+def _apply_prefix_suffix(text: str, level: str, language: str, changes: list) -> str:
+    """Seviyenin prefix/suffix listelerinden ilkini uygular (örnek olsun diye)."""
+    import re
+
+    prefixes_map = TR_POLITENESS_PREFIXES if language == "tr" else EN_POLITENESS_PREFIXES
+    suffixes_map = TR_POLITENESS_SUFFIXES if language == "tr" else None
+
+    prefixes = prefixes_map.get(level, [])
+    if prefixes and text:
+        # Tek başına büyük harfle başlıyorsa küçült
+        first = text[0].lower() + text[1:]
+        text = prefixes[0] + first
+        changes.append(f"'{prefixes[0].strip(', ')}' ifadesi eklendi")
+
+    if suffixes_map:
+        suffixes = suffixes_map.get(level, [])
+        if suffixes and text and not re.search(r"[.!?]$", text.strip()):
+            text = text.rstrip() + suffixes[0]
+            changes.append(f"'{suffixes[0].strip()}' ekleme yapıldı")
+    return text
 
 
 def rewrite_politeness(
@@ -185,13 +212,13 @@ def rewrite_politeness(
 ) -> dict:
     """
     Metni nezaket seviyesine göre yeniden yazar.
-    
+
     Args:
         text: Orijinal metin
         politeness_level: 0 (çok samimi) → 100 (çok resmi)
         language: Dil kodu ("tr" veya "en")
         emotion: Tespit edilen duygu (opsiyonel)
-    
+
     Returns:
         dict: {
             "rewritten_text": str,
@@ -207,7 +234,7 @@ def rewrite_politeness(
         }
 
     level = get_politeness_level(politeness_level)
-    changes = []
+    changes: list[str] = []
 
     if language == "tr":
         result = _rewrite_turkish(text, level, changes)
@@ -216,14 +243,19 @@ def rewrite_politeness(
     else:
         result = text
 
+    # very_formal / very_informal için prefix-suffix uygula
+    if language in ("tr", "en") and level in ("very_formal", "very_informal"):
+        result = _apply_prefix_suffix(result, level, language, changes)
+
     # Duygu durumuna göre ek ayarlama
     if emotion and emotion in ("angry", "stressed"):
-        if level in ("formal", "very_formal"):
-            changes.append("Stresli ton tespit edildi — sakinleştirici ifade eklendi")
+        if level in ("formal", "very_formal", "neutral"):
             if language == "tr":
                 result = "Anlıyorum, " + result[0].lower() + result[1:]
-            else:
+                changes.append("Empatik giriş eklendi (stresli ton)")
+            elif language == "en":
                 result = "I understand, " + result[0].lower() + result[1:]
+                changes.append("Empathetic intro added (stressed tone)")
 
     return {
         "rewritten_text": result,

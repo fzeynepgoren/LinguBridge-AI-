@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { speakWithEmotion } from '../utils/ttsEngine';
 
 const LANGUAGES = {
   tr: { name: 'Türkçe', flag: '🇹🇷' },
@@ -34,6 +35,8 @@ export default function TranslationPanel({
   isTranslating = false,
   changesMade = [],
   politenessLabel = '',
+  emotion = 'neutral',
+  ttsHints = null,
 }) {
   const [showChanges, setShowChanges] = useState(false);
 
@@ -42,14 +45,17 @@ export default function TranslationPanel({
     onTargetLangChange(sourceLang);
   };
 
-  const handleSpeak = (text, lang) => {
-    if ('speechSynthesis' in window && text) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang === 'tr' ? 'tr-TR' : lang === 'en' ? 'en-US' : lang;
-      utterance.rate = 0.9;
-      window.speechSynthesis.speak(utterance);
-    }
+  // Kaynak metni okurken duygu ham ses analizinden geliyor.
+  // Hedef metni okurken duyguyu nötrleştirip LLM tts_hints'i kullanıyoruz.
+  const handleSpeakSource = (text, lang) => {
+    if (!text) return;
+    const result = speakWithEmotion(text, lang, emotion, null);
+    console.debug('[TTS] kaynak →', lang, '| ses:', result.voice, '| params:', result.params);
+  };
+  const handleSpeakTarget = (text, lang) => {
+    if (!text) return;
+    const result = speakWithEmotion(text, lang, emotion, ttsHints);
+    console.debug('[TTS] hedef →', lang, '| ses:', result.voice, '| params:', result.params);
   };
 
   return (
@@ -86,8 +92,9 @@ export default function TranslationPanel({
           <div className="translation-actions">
             <button
               className="btn-icon"
-              onClick={() => handleSpeak(sourceText, sourceLang)}
-              title="Sesli oku"
+              onClick={() => handleSpeakSource(sourceText, sourceLang)}
+              title="Sesli oku (duygulu)"
+              aria-label="Kaynak metni duygulu sesli oku"
               disabled={!sourceText}
             >
               🔊
@@ -119,7 +126,7 @@ export default function TranslationPanel({
               ))}
             </select>
           </div>
-          <div className="translation-output">
+          <div className="translation-output" aria-live="polite" aria-busy={isTranslating}>
             {isTranslating ? (
               <div className="translation-loading">
                 <div className="loading-dots">
@@ -143,11 +150,12 @@ export default function TranslationPanel({
           <div className="translation-actions">
             <button
               className="btn-icon"
-              onClick={() => handleSpeak(adaptedText || translatedText, targetLang)}
-              title="Sesli oku"
+              onClick={() => handleSpeakTarget(adaptedText || translatedText, targetLang)}
+              title="Duygulu sesli oku"
+              aria-label="Çeviriyi duygulu sesli oku"
               disabled={!adaptedText && !translatedText}
             >
-              🔊
+              🎭
             </button>
             {changesMade.length > 0 && (
               <button
@@ -158,6 +166,35 @@ export default function TranslationPanel({
               </button>
             )}
           </div>
+          {(adaptedText || translatedText) && (
+            <div className="tts-preview" role="group" aria-label="Aynı cümleyi farklı duygu tonlarında dinle">
+              <span className="tts-preview-label">Tonu deneyin:</span>
+              <button
+                type="button"
+                className="tts-preview-btn"
+                onClick={() => speakWithEmotion(adaptedText || translatedText, targetLang, 'happy', { rate: 1.08, pitch: 1.18, volume: 1.0 })}
+                title="Sıcak / mutlu tonda oku"
+              >
+                😊 Sıcak
+              </button>
+              <button
+                type="button"
+                className="tts-preview-btn"
+                onClick={() => speakWithEmotion(adaptedText || translatedText, targetLang, 'neutral', { rate: 1.0, pitch: 1.0, volume: 1.0 })}
+                title="Nötr tonda oku"
+              >
+                😐 Nötr
+              </button>
+              <button
+                type="button"
+                className="tts-preview-btn"
+                onClick={() => speakWithEmotion(adaptedText || translatedText, targetLang, 'sad', { rate: 0.88, pitch: 0.88, volume: 0.9 })}
+                title="Yumuşak / üzgün tonda oku"
+              >
+                😔 Yumuşak
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

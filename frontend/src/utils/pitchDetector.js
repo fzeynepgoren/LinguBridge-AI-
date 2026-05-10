@@ -53,7 +53,15 @@ export function detectPitch(buffer, sampleRate) {
   }
 
   if (bestCorrelation > 0.01 && bestOffset > 0) {
-    return sampleRate / bestOffset;
+    let freq = sampleRate / bestOffset;
+    // İnsan sesi 80–400 Hz aralığında; üzerinde tipik olarak harmonik/oktav hatası
+    // Yarısını al → tek seferde doğru aralığa indir
+    while (freq > 500) {
+      freq = freq / 2;
+    }
+    // Hala aralık dışıysa geçersiz say
+    if (freq < 60 || freq > 500) return -1;
+    return freq;
   }
 
   return -1;

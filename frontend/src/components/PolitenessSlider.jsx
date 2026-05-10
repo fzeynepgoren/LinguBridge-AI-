@@ -17,8 +17,6 @@ export default function PolitenessSlider({ value = 50, onChange }) {
     onChange(parseInt(e.target.value, 10));
   };
 
-  // Gradient arka plan hesapla
-  const percentage = value;
   const gradientStyle = {
     background: `linear-gradient(to right, #00B894 0%, #6C5CE7 50%, #2D3436 100%)`,
   };
@@ -55,6 +53,11 @@ export default function PolitenessSlider({ value = 50, onChange }) {
             onChange={handleChange}
             className="slider-input"
             id="politeness-slider"
+            aria-label="Nezaket seviyesi"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={value}
+            aria-valuetext={`${value} — ${currentLevel.label}`}
           />
         </div>
         <div className="slider-value">{value}</div>

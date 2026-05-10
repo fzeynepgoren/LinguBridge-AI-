@@ -3,7 +3,7 @@
  * Backend FastAPI ile iletişim.
  */
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000') + '/api';
 
 /**
  * Backend API'ye istek gönderir.
@@ -28,6 +28,37 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     console.error(`API request failed: ${endpoint}`, error);
     throw error;
   }
+}
+
+/**
+ * Tek istekte: çeviri + nezaket + öneri + TTS hint.
+ * Backend LLM birincil, fallback otomatik.
+ *
+ * @param {{
+ *   text: string,
+ *   sourceLang: string,
+ *   targetLang: string,
+ *   politenessLevel: number,
+ *   emotion: string,
+ *   conversationHistory?: Array<{role: string, text: string, emotion?: string}>
+ * }} payload
+ */
+export async function processMessage({
+  text,
+  sourceLang,
+  targetLang,
+  politenessLevel,
+  emotion,
+  conversationHistory = [],
+}) {
+  return apiRequest('/process', 'POST', {
+    text,
+    source_lang: sourceLang,
+    target_lang: targetLang,
+    politeness_level: politenessLevel,
+    emotion,
+    conversation_history: conversationHistory,
+  });
 }
 
 /**
@@ -80,4 +111,16 @@ export async function getLanguages() {
  */
 export async function healthCheck() {
   return apiRequest('/health');
+}
+
+/**
+ * Karşıdan gelen mesajı analiz eder: ton, kültürel notlar ve 3 yanıt önerisi.
+ * @param {{ text: string, messageLang: string, replyLang: string }} payload
+ */
+export async function analyzeIncomingMessage({ text, messageLang, replyLang }) {
+  return apiRequest('/analyze-incoming', 'POST', {
+    text,
+    message_lang: messageLang,
+    reply_lang: replyLang,
+  });
 }

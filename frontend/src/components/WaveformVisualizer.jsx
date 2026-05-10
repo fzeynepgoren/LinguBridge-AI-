@@ -9,7 +9,6 @@ import { EMOTIONS } from '../utils/emotionClassifier';
 
 export default function WaveformVisualizer({ waveform, emotion = 'neutral', isActive = false }) {
   const canvasRef = useRef(null);
-  const animationRef = useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;

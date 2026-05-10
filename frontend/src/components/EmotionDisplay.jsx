@@ -4,28 +4,23 @@
  * Duygu değişimlerinde animasyon uygular.
  */
 
-import { useState, useEffect } from 'react';
 import { EMOTIONS } from '../utils/emotionClassifier';
 
-export default function EmotionDisplay({ emotion = 'neutral', confidence = 0, details = {} }) {
-  const [displayedEmotion, setDisplayedEmotion] = useState(emotion);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+const EMOTION_OPTIONS = ['happy', 'neutral', 'calm', 'stressed', 'sad', 'angry'];
 
-  const emotionData = EMOTIONS[displayedEmotion] || EMOTIONS.neutral;
-
-  useEffect(() => {
-    if (emotion !== displayedEmotion) {
-      setIsTransitioning(true);
-      const timer = setTimeout(() => {
-        setDisplayedEmotion(emotion);
-        setIsTransitioning(false);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [emotion, displayedEmotion]);
+export default function EmotionDisplay({
+  emotion = 'neutral',
+  detectedEmotion = 'neutral',
+  emotionOverride = 'auto',
+  onEmotionOverrideChange,
+  confidence = 0,
+  details = {},
+  isUncertain = false,
+}) {
+  const emotionData = EMOTIONS[emotion] || EMOTIONS.neutral;
 
   return (
-    <div className={`emotion-display ${isTransitioning ? 'transitioning' : ''}`}>
+    <div className="emotion-display">
       <div className="emotion-header">
         <h3>🧠 Duygu Analizi</h3>
         <div className="emotion-badge" style={{ backgroundColor: emotionData.color + '20', borderColor: emotionData.color }}>
@@ -35,17 +30,34 @@ export default function EmotionDisplay({ emotion = 'neutral', confidence = 0, de
       </div>
 
       <div className="emotion-confidence">
-        <div className="confidence-bar-container">
-          <div
-            className="confidence-bar"
-            style={{
-              width: `${confidence}%`,
-              backgroundColor: emotionData.color,
-              boxShadow: `0 0 12px ${emotionData.color}60`,
-            }}
-          />
-        </div>
-        <span className="confidence-text">%{confidence} güven</span>
+        {emotionOverride === 'auto' ? (
+          isUncertain ? (
+            <div className="confidence-uncertain" role="status">
+              <span className="uncertain-badge">🤔 Belirsiz</span>
+              <span className="uncertain-hint">
+                Düşük güven (%{confidence}). Aşağıdan elle bir duygu seçebilirsin.
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="confidence-bar-container">
+                <div
+                  className="confidence-bar"
+                  style={{
+                    width: `${confidence}%`,
+                    backgroundColor: emotionData.color,
+                    boxShadow: `0 0 12px ${emotionData.color}60`,
+                  }}
+                />
+              </div>
+              <span className="confidence-text">%{confidence} güven</span>
+            </>
+          )
+        ) : (
+          <span className="confidence-text" style={{ color: emotionData.color }}>
+            ✋ Manuel seçim aktif — LLM bu duyguyu kullanacak
+          </span>
+        )}
       </div>
 
       <div className="emotion-details">
@@ -67,6 +79,32 @@ export default function EmotionDisplay({ emotion = 'neutral', confidence = 0, de
       </div>
 
       <p className="emotion-description">{emotionData.description}</p>
+
+      <div className="emotion-override" aria-label="Duygu tonu seçimi">
+        <button
+          type="button"
+          className={`emotion-option ${emotionOverride === 'auto' ? 'active' : ''}`}
+          onClick={() => onEmotionOverrideChange?.('auto')}
+          title={`Otomatik algı: ${EMOTIONS[detectedEmotion]?.label || 'Nötr'}`}
+        >
+          Otomatik
+        </button>
+        {EMOTION_OPTIONS.map((key) => {
+          const item = EMOTIONS[key];
+          return (
+            <button
+              type="button"
+              key={key}
+              className={`emotion-option ${emotionOverride === key ? 'active' : ''}`}
+              onClick={() => onEmotionOverrideChange?.(key)}
+              title={item.label}
+              aria-label={`Duyguyu ${item.label} olarak ayarla`}
+            >
+              <span aria-hidden="true">{item.emoji}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -28,7 +28,15 @@ export default function AudioRecorder({
         className={`record-btn ${isRecording ? 'recording' : ''}`}
         onClick={handleToggle}
         id="record-btn"
-        title={isRecording ? 'Kaydı durdur' : 'Kayıt başlat'}
+        title={isRecording ? 'Kaydı durdur (Space)' : 'Kayıt başlat (Space)'}
+        aria-label={isRecording ? 'Kaydı durdur' : 'Mikrofonu başlat'}
+        aria-pressed={isRecording}
+        onKeyDown={(e) => {
+          if (e.key === ' ' || e.code === 'Space') {
+            e.preventDefault();
+            handleToggle();
+          }
+        }}
       >
         <div className="record-btn-inner">
           {isRecording ? (
@@ -50,7 +58,7 @@ export default function AudioRecorder({
         {isRecording ? (
           <span className="status-recording">
             <span className="status-dot"></span>
-            Dinleniyor & Analiz ediliyor...
+            {isListening ? 'Dinleniyor & Analiz ediliyor...' : 'Ses analiz ediliyor...'}
           </span>
         ) : (
           <span className="status-idle">Mikrofonu başlatmak için tıklayın</span>
