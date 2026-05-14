@@ -39,3 +39,7 @@ Thumbs.db
 *.log.*
 tmp/
 temp/
+
+.venv/
+node_modules/
+dist/

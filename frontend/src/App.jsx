@@ -64,6 +64,21 @@ export default function App() {
   const [emotionOverride, setEmotionOverride] = useState('auto');
   const [translateSuccess, setTranslateSuccess] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('lingubridge-theme');
+    if (saved) return saved;
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  });
+
+  // Theme'i <html> üzerine uygula
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('lingubridge-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   // === Hooks ===
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
@@ -331,6 +346,14 @@ export default function App() {
                 ? 'Backend Kapalı'
                 : 'Kontrol ediliyor...'}
             </span>
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+              aria-label={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+            >
+              {theme === 'dark' ? '☀️' : '🌙'}
+            </button>
           </div>
         </div>
       </header>
